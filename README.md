@@ -63,39 +63,167 @@ Scanner → Backend → MinIO (S3) → DefectDojo
 - **AWS**: S3, ECS, ElastiCache
 - **Chỉ cần đổi .env - code không đổi**
 
-## Cài đặt & Chạy
+## Yêu cầu Hệ thống
 
-### Bước 1: Clone & Setup
+- **Docker**: v20.10+ và Docker Compose v2.0+
+- **Python**: 3.11+ (nếu chạy locally mà không dùng Docker)
+- **Git**: để clone repo
+- **RAM**: ≥4GB (khuyến nghị ≥8GB)
+- **Disk**: ≥10GB cho images, containers, và dữ liệu
+
+## Cài đặt & Cấu hình
+
+### Bước 1: Clone Repository
 ```bash
+git clone https://github.com/nguyenbtkma/ptaas.git
 cd ptaas
+```
+
+### Bước 2: Tạo file .env từ template
+```bash
 cp .env.example .env
 ```
 
-### Bước 2: Cấu hình .env
-```bash
-# Sửa DEFECTDOJO_API_KEY sau khi khởi tạo
-vim .env
+### Bước 3: Cấu hình Biến Môi Trường (.env)
+
+Mở file `.env` và điền các giá trị sau:
+
+#### Database (PostgreSQL)
+```env
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=defectdojo_db
+DB_USER=postgres
+DB_PASSWORD=postgres
 ```
 
-### Bước 3: Khởi động Services
-```bash
-docker-compose up -d
+#### Redis (Task Broker)
+```env
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/1
 ```
 
-### Bước 4: Lấy DefectDojo API Key
-```bash
-# Truy cập DefectDojo
-open http://localhost:8080
-
-# Login: admin / Admin@123
-# Vào: Configuration → API v2 Key → Create Key
-# Copy key vào .env
+#### MinIO (S3-Compatible Storage)
+```env
+S3_ENDPOINT=http://minio:9000
+S3_BUCKET=ptaas
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
 ```
 
-### Bước 5: Restart Backend
-```bash
-docker-compose restart backend celery
+#### DefectDojo
+```env
+DEFECTDOJO_URL=http://nginx:8080
+DEFECTDOJO_API_KEY=your-api-key-here  # Điền sau bước khởi tạo
 ```
+
+#### ZAP Scanner
+```env
+ZAP_URL=http://zap:8080
+ZAP_API_KEY=changeme
+```
+
+#### Backend Service
+```env
+BACKEND_HOST=0.0.0.0
+BACKEND_PORT=8000
+DEBUG=False
+```
+
+**Lưu ý:** Các giá trị local (minio, redis, nginx) chỉ dùng trong Docker Compose. Nếu deploy AWS, thay bằng endpoint thực tế (RDS, ElastiCache, S3, v.v.).
+
+### Bước 4: Khởi động Services
+```bash
+docker compose up -d
+```
+
+Kiểm tra tất cả container chạy:
+```bash
+docker compose ps
+```
+
+Chờ 30-60s để services khởi động hoàn toàn, đặc biệt DefectDojo DB.
+
+### Bước 5: Lấy DefectDojo API Key
+
+1. Truy cập DefectDojo: http://localhost:8080
+2. Đăng nhập: **Username**: `admin` | **Password**: `Admin@123`
+3. Vào **Configuration** → **API v2 Key**
+4. Click **Create Key** (nếu chưa có)
+5. **Copy API Key** từ danh sách
+
+### Bước 6: Cập nhật .env với API Key
+```bash
+# Mở .env và sửa:
+DEFECTDOJO_API_KEY=<your-copied-api-key>
+```
+
+### Bước 7: Restart Backend & Celery
+```bash
+docker compose restart backend celery
+```
+
+Verify logs:
+```bash
+docker compose logs -f backend celery
+```
+
+Nếu thấy `Task is ready` hoặc `Server running` → Thành công!
+
+## Xác minh Cài đặt
+
+Chạy test script để kiểm tra toàn bộ hệ thống:
+```bash
+chmod +x test_system.sh
+./test_system.sh
+```
+
+Expected output:
+- Health check: OK
+- Nmap scan: Started
+- ZAP scan: Started  
+- Findings retrieved: N items
+
+## Các Port & URL
+
+| Service | Local URL | Credentials |
+|---------|-----------|-------------|
+| **FastAPI** | http://localhost:8000 | - |
+| **FastAPI Docs** | http://localhost:8000/docs | - |
+| **DefectDojo** | http://localhost:8080 | admin / Admin@123 |
+| **MinIO** | http://localhost:9001 | minioadmin / minioadmin |
+| **ZAP Proxy** | http://localhost:8090 | - |
+| **Redis** | localhost:6379 | - |
+| **PostgreSQL** | localhost:5432 | postgres / postgres |
+
+## Troubleshooting
+
+### Container không khởi động
+```bash
+docker compose logs <service-name>
+# Ví dụ:
+docker compose logs backend
+docker compose logs defectdojo_uwsgi
+```
+
+### Celery worker không sẵn sàng
+```bash
+# Flush Redis để xóa old messages:
+docker compose exec redis redis-cli FLUSHALL
+
+# Restart Celery:
+docker compose restart celery
+```
+
+### DefectDojo 403 API Key Invalid
+- Kiểm tra `DEFECTDOJO_API_KEY` trong `.env` có đúng không
+- Kiểm tra key đã tạo và chưa bị revoke
+- Restart container: `docker compose restart backend celery`
+
+### Kết nối MinIO thất bại
+- Kiểm tra `S3_ENDPOINT=http://minio:9000` (không phải http://localhost)
+- Kiểm tra `S3_ACCESS_KEY` và `S3_SECRET_KEY` khớp với DefectDojo container
+- Xem logs MinIO: `docker compose logs minio`
 
 ## Sử dụng API
 
