@@ -1,0 +1,4 @@
+{
+  "target": "scanme.nmap.org",
+  "options": "-F"
+}

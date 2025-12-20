@@ -1,0 +1,4 @@
+{
+  "target": "http://testphp.vulnweb.com",
+  "options": "passive"
+}

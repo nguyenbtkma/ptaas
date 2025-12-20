@@ -1,0 +1,200 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: ptaas-postgres
+    environment:
+      POSTGRES_DB: defectdojo
+      POSTGRES_USER: defectdojo
+      POSTGRES_PASSWORD: defectdojo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: ptaas-redis
+
+  minio:
+    image: minio/minio
+    container_name: ptaas-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  initializer:
+    image: defectdojo/defectdojo-django:latest
+    container_name: ptaas-initializer
+    depends_on:
+      - postgres
+      - redis
+    # Sửa lại thành tên script đầy đủ
+    entrypoint: ["/entrypoint-initializer.sh"]
+    environment:
+      DD_DATABASE_ENGINE: django.db.backends.postgresql
+      DD_DATABASE_HOST: postgres
+      DD_DATABASE_NAME: defectdojo
+      DD_DATABASE_USER: defectdojo
+      DD_DATABASE_PASSWORD: defectdojo
+      DD_DATABASE_PORT: 5432
+      DD_CELERY_BROKER_URL: redis://redis:6379/0
+      DD_ADMIN_USER: admin
+      DD_ADMIN_PASSWORD: "Admin@123"
+      DD_INITIALIZE_TEST_TYPES: "True"
+
+  uwsgi:
+    image: defectdojo/defectdojo-django:latest
+    container_name: ptaas-dojo
+    depends_on:
+      - postgres
+      - redis
+      - initializer
+    environment:
+      DD_DATABASE_ENGINE: django.db.backends.postgresql
+      DD_DATABASE_HOST: postgres
+      DD_DATABASE_NAME: defectdojo
+      DD_DATABASE_USER: defectdojo
+      DD_DATABASE_PASSWORD: defectdojo
+      DD_DATABASE_PORT: 5432
+      DD_CELERY_BROKER_URL: redis://redis:6379/0
+      DD_ALLOWED_HOSTS: '*'
+      DD_SECRET_KEY: 'secret_key_cua_ban'
+      DD_USE_S3: "True"
+      DD_AWS_ACCESS_KEY_ID: minioadmin
+      DD_AWS_SECRET_ACCESS_KEY: minioadmin
+      DD_AWS_STORAGE_BUCKET_NAME: dojo-media
+      DD_AWS_S3_ENDPOINT_URL: http://minio:9000
+    expose:
+      - "3031"
+
+  celeryworker:
+    image: defectdojo/defectdojo-django:latest
+    container_name: ptaas-celeryworker
+    depends_on:
+      - uwsgi
+      - redis
+      - postgres
+    # Sửa lại thành tên script đầy đủ
+    entrypoint: ["/entrypoint-celery-worker.sh"]
+    environment:
+      DD_DATABASE_ENGINE: django.db.backends.postgresql
+      DD_DATABASE_HOST: postgres
+      DD_DATABASE_PORT: 5432
+      DD_DATABASE_NAME: defectdojo
+      DD_DATABASE_USER: defectdojo
+      DD_DATABASE_PASSWORD: defectdojo
+      DD_CELERY_BROKER_URL: redis://redis:6379/0
+
+  nginx:
+    image: defectdojo/defectdojo-nginx:latest
+    container_name: ptaas-nginx
+    depends_on:
+      - uwsgi
+    ports:
+      - "8080:8080"
+    environment:
+      UWSGI_HOST: dojo
+      UWSGI_PORT: 3031
+
+  zap:
+    image: zaproxy/zap-stable
+    container_name: ptaas-zap
+    command: >
+      zap.sh -daemon -host 0.0.0.0 -port 8080
+      -config api.key=changeme
+      -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+    ports:
+      - "8090:8080"
+    environment:
+      ZAP_PORT: 8080
+
+  nmap:
+    image: instrumentisto/nmap
+    container_name: ptaas-nmap
+    entrypoint: ["sleep", "infinity"]
+
+  sqlmap:
+    image: secsi/sqlmap
+    container_name: ptaas-sqlmap
+    entrypoint: ["sleep", "infinity"]
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ptaas-backend
+    depends_on:
+      - postgres
+      - redis
+      - minio
+      - nginx
+      - zap
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=defectdojo
+      - DB_USER=defectdojo
+      - DB_PASSWORD=defectdojo
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
+      - S3_BUCKET=ptaas
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - DEFECTDOJO_URL=http://nginx:8080
+      - DEFECTDOJO_API_KEY=${DEFECTDOJO_API_KEY}
+      - ZAP_URL=http://zap:8080
+      - ZAP_API_KEY=changeme
+      - NMAP_CONTAINER=ptaas-nmap
+      - SQLMAP_CONTAINER=ptaas-sqlmap
+      - BACKEND_HOST=0.0.0.0
+      - BACKEND_PORT=8000
+      - DEBUG=True
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ptaas-celery
+    depends_on:
+      - backend
+      - redis
+      - postgres
+    environment:
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=defectdojo
+      - DB_USER=defectdojo
+      - DB_PASSWORD=defectdojo
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
+      - S3_BUCKET=ptaas
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - DEFECTDOJO_URL=http://nginx:8080
+      - DEFECTDOJO_API_KEY=${DEFECTDOJO_API_KEY}
+      - ZAP_URL=http://zap:8080
+      - ZAP_API_KEY=changeme
+      - NMAP_CONTAINER=ptaas-nmap
+      - SQLMAP_CONTAINER=ptaas-sqlmap
+    volumes:
+      - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+
+volumes:
+  postgres_data:
+  minio_data:
