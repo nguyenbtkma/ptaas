@@ -63,7 +63,7 @@ def scan_with_nmap(self, target: str, options: str = "-sV -sC"):
             filename=filename,
             scan_type="Nmap Scan",
             engagement_name=f"Nmap Scan - {target}",
-            product_name="PTaaS Lab Project"
+            product_name=os.getenv('PRODUCT_NAME', 'PTaaS Lab Project')
         )
         
         self.update_state(state='STARTED', meta={'progress': 100, 'status': 'Completed'})
@@ -140,15 +140,15 @@ def scan_with_zap(self, target_url: str, scan_type: str = "active"):
         
         self.update_state(state='STARTED', meta={'progress': 80, 'status': 'Generating report...'})
         
-        # 4. Get JSON report
-        report_response = requests.get(zap_api("OTHER/core/other/jsonreport/"))
+        # 4. Get XML report (DefectDojo expects ZAP XML)
+        report_response = requests.get(zap_api("OTHER/core/other/xmlreport/"))
         scan_output = report_response.content
         
         self.update_state(state='STARTED', meta={'progress': 85, 'status': 'Uploading to storage...'})
         
         # Upload to MinIO/S3
-        filename = f"zap_{target_url.replace('://', '_').replace('/', '_')}_{int(time.time())}.json"
-        storage_url = storage_client.upload(scan_output, filename, content_type='application/json')
+        filename = f"zap_{target_url.replace('://', '_').replace('/', '_')}_{int(time.time())}.xml"
+        storage_url = storage_client.upload(scan_output, filename, content_type='application/xml')
         
         self.update_state(state='STARTED', meta={'progress': 90, 'status': 'Importing to DefectDojo...'})
         
@@ -158,7 +158,7 @@ def scan_with_zap(self, target_url: str, scan_type: str = "active"):
             filename=filename,
             scan_type="ZAP Scan",
             engagement_name=f"ZAP {scan_type.title()} Scan - {target_url}",
-            product_name="PTaaS Lab Project"
+            product_name=os.getenv('PRODUCT_NAME', 'PTaaS Lab Project')
         )
         
         self.update_state(state='STARTED', meta={'progress': 100, 'status': 'Completed'})
@@ -189,18 +189,59 @@ def scan_with_sqlmap(self, target_url: str, options: str = "--batch --level=1 --
         
         self.update_state(state='STARTED', meta={'progress': 20, 'status': f'Scanning {target_url}...'})
         
-        # Run SQLMap
+        # Run SQLMap - output to log file
         container = docker_client.containers.get(container_name)
-        command = f"sqlmap -u {target_url} {options} --output-dir=/tmp/sqlmap --json"
+        output_dir = f"/tmp/sqlmap_{int(time.time())}"
+        command = f"python3 /sqlmap/sqlmap.py -u {target_url} {options} --output-dir={output_dir}"
         result = container.exec_run(command)
         
         scan_output = result.output
         
-        self.update_state(state='STARTED', meta={'progress': 70, 'status': 'Uploading results...'})
+        self.update_state(state='STARTED', meta={'progress': 60, 'status': 'Uploading results...'})
         
         # Upload to MinIO/S3
-        filename = f"sqlmap_{target_url.replace('://', '_').replace('/', '_')}_{int(time.time())}.txt"
+        filename = f"sqlmap_{target_url.replace('://', '_').replace('/', '_').replace('?', '_')}_{int(time.time())}.txt"
         storage_url = storage_client.upload(scan_output, filename, content_type='text/plain')
+        
+        self.update_state(state='STARTED', meta={'progress': 80, 'status': 'Parsing results...'})
+        
+        # Parse SQLMap output for vulnerabilities
+        output_text = scan_output.decode('utf-8', errors='ignore')
+        vulnerabilities_found = 'sqlmap identified the following' in output_text.lower() or 'parameter' in output_text.lower() and 'vulnerable' in output_text.lower()
+        
+        # Create simple JSON for DefectDojo Generic Findings Import
+        import json
+        findings = []
+        if vulnerabilities_found:
+            # Extract vulnerability info (simplified)
+            findings.append({
+                "title": f"SQLMap Scan Result - {target_url}",
+                "severity": "High",
+                "description": output_text[:2000],  # First 2000 chars
+                "mitigation": "Review SQLMap output and patch SQL injection vulnerabilities",
+                "references": f"Storage: {storage_url}"
+            })
+        else:
+            findings.append({
+                "title": f"SQLMap Scan - No vulnerabilities found",
+                "severity": "Info",
+                "description": f"SQLMap scan completed for {target_url}. No SQL injection vulnerabilities detected.",
+                "mitigation": "N/A",
+                "references": f"Full report: {storage_url}"
+            })
+        
+        findings_json = json.dumps({"findings": findings}).encode('utf-8')
+        
+        self.update_state(state='STARTED', meta={'progress': 90, 'status': 'Importing to DefectDojo...'})
+        
+        # Import to DefectDojo
+        dojo_result = dojo_client.import_scan(
+            file_content=findings_json,
+            filename=f"sqlmap_findings_{int(time.time())}.json",
+            scan_type="Generic Findings Import",
+            engagement_name=f"SQLMap Scan - {target_url}",
+            product_name=os.getenv('PRODUCT_NAME', 'PTaaS Lab Project')
+        )
         
         self.update_state(state='STARTED', meta={'progress': 100, 'status': 'Completed'})
         
@@ -208,7 +249,9 @@ def scan_with_sqlmap(self, target_url: str, options: str = "--batch --level=1 --
             'status': 'success',
             'target': target_url,
             'storage_url': storage_url,
-            'filename': filename
+            'dojo_import': dojo_result,
+            'filename': filename,
+            'vulnerabilities_found': vulnerabilities_found
         }
         
     except docker.errors.NotFound:

@@ -231,6 +231,87 @@ class DefectDojoClient:
         except Exception as e:
             print(f"[DefectDojo] Get products error: {e}")
             return []
+
+    def get_engagements(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get engagements/tests for dashboard/history"""
+        try:
+            response = self._request('GET', 'engagements/', params={'limit': limit})
+            return response.get('results', [])
+        except Exception as e:
+            print(f"[DefectDojo] Get engagements error: {e}")
+            return []
+
+    def list_findings_raw(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+        """Return raw findings payload (used by frontend to keep test info)"""
+        try:
+            data = self._request('GET', 'findings/', params={'limit': limit, 'offset': offset})
+            return data.get('results', [])
+        except Exception as e:
+            print(f"[DefectDojo] List findings raw error: {e}")
+            return []
+
+    def list_engagements_raw(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+        """Return raw engagements payload"""
+        try:
+            data = self._request('GET', 'engagements/', params={'limit': limit, 'offset': offset})
+            return data.get('results', [])
+        except Exception as e:
+            print(f"[DefectDojo] List engagements raw error: {e}")
+            return []
+
+    def get_tests(self, limit: int = 1000) -> List[Dict[str, Any]]:
+        """Get all tests with details"""
+        try:
+            response = self._request('GET', 'tests/', params={'limit': limit})
+            return response.get('results', [])
+        except Exception as e:
+            print(f"[DefectDojo] Get tests error: {e}")
+            return []
+
+    def get_test_detail(self, test_id: int) -> Optional[Dict[str, Any]]:
+        """Get test detail by ID"""
+        try:
+            return self._request('GET', f'tests/{test_id}/')
+        except Exception as e:
+            print(f"[DefectDojo] Get test detail error: {e}")
+            return None
+    
+    def get_test_file(self, test_id: int) -> Optional[bytes]:
+        """
+        Try to download raw scan file from DefectDojo test
+        DefectDojo may store file attachments in test files endpoint
+        Falls back to searching MinIO for matching raw files
+        """
+        try:
+            # First, check if test has file_upload field or attachments
+            test = self.get_test_detail(test_id)
+            if not test:
+                return None
+            
+            # DefectDojo might have files in separate endpoint
+            try:
+                files_response = self._request('GET', f'tests/{test_id}/files/')
+                if files_response and 'results' in files_response and len(files_response['results']) > 0:
+                    # Try to download the first file
+                    file_obj = files_response['results'][0]
+                    if 'file' in file_obj:
+                        file_url = file_obj['file']
+                        # Download the file
+                        headers = {'Authorization': f'Token {self.api_key}'}
+                        response = requests.get(file_url, headers=headers)
+                        if response.status_code == 200:
+                            return response.content
+            except:
+                # DefectDojo may not have files endpoint, continue
+                pass
+            
+            # Fallback: Try to find raw file in MinIO by searching for test-related patterns
+            # This requires importing StorageClient, but avoid circular imports
+            # Instead, return None and let the endpoint handle MinIO fallback
+            return None
+        except Exception as e:
+            print(f"[DefectDojo] Get test file error: {e}")
+            return None
     
     def create_product(self, name: str, description: str = "") -> Dict[str, Any]:
         """Create a new product"""

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PTaaS - Penetration Testing as a Service</title>
+    <link rel="stylesheet" href="css/style.css?v=5">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="brand-logo">🔐 PTaaS</h1>
+                <p class="brand-subtitle">Penetration Testing</p>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" onclick="showPage('dashboard')" class="nav-item active" id="nav-dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">Dashboard</span>
+                </a>
+                <a href="#" onclick="showPage('scan')" class="nav-item" id="nav-scan">
+                    <span class="nav-icon">🚀</span>
+                    <span class="nav-label">New Scan</span>
+                </a>
+                <a href="#" onclick="showPage('history')" class="nav-item" id="nav-history">
+                    <span class="nav-icon">📜</span>
+                    <span class="nav-label">History</span>
+                </a>
+                <a href="#" onclick="showPage('schedule')" class="nav-item" id="nav-schedule">
+                    <span class="nav-icon">⏰</span>
+                    <span class="nav-label">Schedule</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="user-avatar">👤</div>
+                    <div class="user-details">
+                        <p class="user-name">Admin</p>
+                        <p class="user-status">Online</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-layout">
+        <!-- Dashboard Page -->
+        <div id="dashboard" class="page active">
+            <div class="page-header">
+                <h2>Dashboard</h2>
+                <p>Overview of your security scanning activities</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <h3>Total Scans</h3>
+                    <p class="stat-value" id="totalScans">0</p>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🔴</div>
+                    <h3>Active Tasks</h3>
+                    <p class="stat-value" id="activeTasks">0</p>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🐛</div>
+                    <h3>Total Findings</h3>
+                    <p class="stat-value" id="totalFindings">0</p>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⚠️</div>
+                    <h3>Critical Issues</h3>
+                    <p class="stat-value" id="criticalFindings">0</p>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="charts-section">
+                <div class="chart-container">
+                    <h3>Severity Distribution</h3>
+                    <div id="severityChart"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>Scan Activity (Last 7 Days)</h3>
+                    <div id="activityChart"></div>
+                </div>
+            </div>
+
+            <!-- Recent Findings -->
+            <div class="recent-section">
+                <h3>Recent Findings</h3>
+                <table class="findings-table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Severity</th>
+                            <th>From Scan</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recentFindings">
+                        <tr><td colspan="4" class="loading">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Scan Page -->
+        <div id="scan" class="page">
+            <div class="page-header">
+                <h2>Start New Scan</h2>
+                <p>Launch a security scan against your target</p>
+            </div>
+
+            <div class="scan-container" style="display:flex; gap: 20px; align-items: flex-start;">
+                <!-- Left: Scan Form -->
+                <form id="scanForm" class="scan-form" style="flex:1;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="scanType">Scan Type *</label>
+                            <select id="scanType" required onchange="updateScanOptions()">
+                                <option value="">-- Select Scan Type --</option>
+                                <option value="nmap">🌐 Nmap (Network Scanning)</option>
+                                <option value="zap">🔍 ZAP (Web Application)</option>
+                                <option value="sqlmap">💾 SQLMap (SQL Injection)</option>
+                            </select>
+                            <small>Choose the type of security scan you want to perform</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="target">Target *</label>
+                            <input type="text" id="target" placeholder="e.g., scanme.nmap.org or http://testphp.vulnweb.com" required>
+                            <small id="targetHint">Enter the target to scan</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="options">Scan Options</label>
+                            <div class="options-container">
+                                <div id="nmapOptions" class="scan-options" style="display:none;">
+                                    <div class="option-group">
+                                        <label><input type="checkbox" value="-sV" class="option-check"> Service Version Detection</label>
+                                        <label><input type="checkbox" value="-O" class="option-check"> OS Detection</label>
+                                        <label><input type="checkbox" value="-A" class="option-check"> Aggressive Scan</label>
+                                        <label><input type="checkbox" value="-F" class="option-check"> Fast Scan (Most common ports)</label>
+                                        <label><input type="checkbox" value="-p-" class="option-check"> Scan All Ports</label>
+                                    </div>
+                                </div>
+
+                                <div id="zapOptions" class="scan-options" style="display:none;">
+                                    <select id="zapMode" class="option-select">
+                                        <option value="passive">Passive (No attacks)</option>
+                                        <option value="active">Active (Attack mode)</option>
+                                        <option value="full">Full (Complete scan)</option>
+                                    </select>
+                                </div>
+
+                                <div id="sqlmapOptions" class="scan-options" style="display:none;">
+                                    <div class="option-group">
+                                        <label><input type="checkbox" value="--dbs" class="option-check"> Enumerate Databases</label>
+                                        <label><input type="checkbox" value="--tables" class="option-check"> Enumerate Tables</label>
+                                        <label><input type="checkbox" value="--crawl=2" class="option-check"> Crawl (2 levels)</label>
+                                    </div>
+                                </div>
+
+                                <textarea id="customOptions" placeholder="Or paste custom options here" class="custom-options"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary btn-large">🚀 Start Scan</button>
+                    </div>
+                </form>
+
+                <!-- Single-task status panel removed; Active Jobs list provides live status for all tasks -->
+                
+                <!-- Right: Active Jobs List (all running scans) -->
+                <div class="scan-status-panel" style="flex:1;">
+                    <div class="status-header">
+                        <h3>Active Jobs</h3>
+                    </div>
+                    <div class="status-content" style="max-height: 360px; overflow-y: auto;">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Target</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                    <th>Started</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activeJobsBody">
+                                <tr><td colspan="5" class="loading">No active jobs</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Jobs are now integrated into the Scan page (right column) -->
+
+        <!-- History Page -->
+        <div id="history" class="page">
+            <div class="page-header">
+                <h2>Scan History</h2>
+                <p>View and manage your previous scans</p>
+            </div>
+
+            <div class="history-controls">
+                <div class="filter-group">
+                    <input type="text" id="searchScans" placeholder="Search by target..." class="search-input">
+                    <select id="filterType" class="filter-select">
+                        <option value="">All Types</option>
+                        <option value="nmap">Nmap</option>
+                        <option value="zap">ZAP</option>
+                        <option value="sqlmap">SQLMap</option>
+                    </select>
+                    <select id="filterStatus" class="filter-select">
+                        <option value="">All Status</option>
+                        <option value="success">Success</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="history-table-container" style="max-height: 520px; overflow-y: auto; border: 1px solid #ecf0f1;">
+            <table class="history-table" style="width: 100%;">
+                <thead style="position: sticky; top: 0; z-index: 10; border-bottom: 2px solid #bdc3c7;">
+                    <tr>
+                        <th style="padding: 10px; text-align: left;">Type</th>
+                        <th style="padding: 10px; text-align: left;">Target</th>
+                        <th style="padding: 10px; text-align: left;">Status</th>
+                        <th style="padding: 10px; text-align: left;">Findings</th>
+                        <th style="padding: 10px; text-align: left;">Started</th>
+                        <th style="padding: 10px; text-align: left;">Duration</th>
+                        <th style="padding: 10px; text-align: left;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr><td style="padding: 10px;">—</td><td style="padding: 10px;">—</td><td style="padding: 10px;">—</td><td style="padding: 10px;">—</td><td style="padding: 10px;">—</td><td style="padding: 10px;">—</td><td style="padding: 10px;"><span class="loading">Loading...</span></td></tr>
+                </tbody>
+            </table>
+            </div>
+        </div>
+
+        <!-- Schedule Page -->
+        <div id="schedule" class="page">
+            <div class="page-header">
+                <h2>Scheduled Scans</h2>
+                <p>Set up automatic scans and notifications</p>
+            </div>
+
+            <div class="schedule-actions">
+                <button type="button" class="btn-primary" onclick="showScheduleForm()">+ Add New Schedule</button>
+            </div>
+
+            <!-- Schedule Form (Hidden by default) -->
+            <div id="scheduleFormContainer" class="schedule-form-container" style="display:none;">
+                <form id="scheduleForm" class="schedule-form">
+                    <h3>Create New Schedule</h3>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="scheduleName">Schedule Name *</label>
+                            <input type="text" id="scheduleName" placeholder="e.g., Weekly Production Scan" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="scheduleScanType">Scan Type *</label>
+                            <select id="scheduleScanType" required>
+                                <option value="">-- Select --</option>
+                                <option value="nmap">Nmap</option>
+                                <option value="zap">ZAP</option>
+                                <option value="sqlmap">SQLMap</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="scheduleTarget">Target *</label>
+                            <input type="text" id="scheduleTarget" placeholder="Target to scan" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="scheduleFrequency">Frequency *</label>
+                            <select id="scheduleFrequency" required>
+                                <option value="">-- Select --</option>
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="scheduleTime">Time (HH:MM) *</label>
+                            <input type="time" id="scheduleTime" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="scheduleEmail">Notification Email *</label>
+                            <input type="email" id="scheduleEmail" placeholder="your@email.com" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="notifyOn">Notify On</label>
+                            <select id="notifyOn">
+                                <option value="always">Always</option>
+                                <option value="findings_only">Findings Found Only</option>
+                                <option value="failure">Failures Only</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn-primary">Create Schedule</button>
+                        <button type="button" class="btn-secondary" onclick="hideScheduleForm()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Schedules List -->
+            <table class="schedule-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Target</th>
+                        <th>Frequency</th>
+                        <th>Next Run</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduleBody">
+                    <tr><td colspan="7" class="loading">No scheduled scans yet</td></tr>
+                </tbody>
+            </table>
+        </main>
+    </div>
+
+    <!-- Scan Detail Modal -->
+    <div id="scanDetailModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Scan Details</h3>
+                <button type="button" class="modal-close" onclick="closeScanDetail()">✕</button>
+            </div>
+            <div id="scanDetailContent" class="modal-body">
+                <!-- Populated by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" onclick="closeScanDetail()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/api.js?v=5"></script>
+    <script src="js/common.js?v=5"></script>
+    <script src="js/dashboard.js?v=5"></script>
+    <script src="js/scan.js?v=5"></script>
+    <script src="js/history.js?v=5"></script>
+    <script src="js/schedule.js?v=5"></script>
+
+    <script>
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboard();
+            
+            // Set up event listeners
+            document.getElementById('scanForm').addEventListener('submit', handleScanSubmit);
+            document.getElementById('scheduleForm').addEventListener('submit', handleScheduleSubmit);
+            document.getElementById('searchScans').addEventListener('input', filterHistory);
+            document.getElementById('filterType').addEventListener('change', filterHistory);
+            document.getElementById('filterStatus').addEventListener('change', filterHistory);
+        });
+
+        // Page navigation
+        function showPage(pageName) {
+            // Stop auto-refresh when leaving pages
+            const currentPageId = document.querySelector('.page.active')?.id;
+            if (currentPageId === 'history') {
+                stopHistoryAutoRefresh();
+            }
+            if (currentPageId === 'scan') {
+                // Stop active jobs polling when leaving scan page
+                try { stopActiveJobsAutoRefresh(); } catch (e) {}
+            }
+
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(pageName).classList.add('active');
+
+            // Update nav items
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            document.getElementById(`nav-${pageName}`).classList.add('active');
+
+            // Load page-specific data
+            if (pageName === 'dashboard') {
+                loadDashboard();
+            } else if (pageName === 'history') {
+                startHistoryAutoRefresh();
+            } else if (pageName === 'scan') {
+                startActiveJobsAutoRefresh();
+            } else if (pageName === 'schedule') {
+                loadScheduleList();
+            }
+        }
+    </script>
+</body>
+</html>
